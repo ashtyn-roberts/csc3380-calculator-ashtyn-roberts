@@ -59,90 +59,87 @@ void token_stream::putback(token t)
     full = true;
 }
 
-token token_stream::get()    // read a token from the token_stream
-{
-    // check if we already have a Token ready
-    if (full)
-    {
+token token_stream::get() {
+    if (full) {
         full = false;
         return buffer;
     }
 
-    // note that >> skips whitespace (space, newline, tab, etc.)
     char ch;
-    std::cin >> ch;
-
-    if (std::isspace(ch)){
-        if (ch == '\n') return token(';');
+    std::cin >> std::ws;  // Ignore leading whitespace
+    if (!(std::cin >> ch)) {
+        return token(';');  // Handle end-of-input as end of statement
     }
 
-    switch (ch)
-    {
-    case '(': case ')': case ';': case 'q': case '+':
-    case '-': case '*': case '/': case '%':
-        return token(ch);    // let each character represent itself
+    switch (ch) {
+    case '(': case ')': case ';': case '+': case '-': case '*': case '/': case '%':
+        return token(ch);
     case '.':
-    case '0': case '1': case '2': case '3': case '4': 
+    case '0': case '1': case '2': case '3': case '4':
     case '5': case '6': case '7': case '8': case '9':
-    {
-        std::cin.putback(ch);      // put digit back into the input stream
+        std::cin.putback(ch);
         double val;
-        std::cin >> val;           // read a floating-point number
-        return token('8', val);    // let ‘8’ represent “a number”
-    }
+        std::cin >> val;
+        return token('8', val);  // '8' for numbers
+    case 'q':  // Single 'q' treated as quit command
+        return token('q');
+    case '=':
+        return token('=');
     default:
-        if(std::isalpha(ch)){
+        if (isalpha(ch)) {
             std::string s;
             s += ch;
-            while(std::cin.get(ch) && (std::isalnum(ch) || ch == '_')) s += ch;
+            while (std::cin.get(ch) && (isalnum(ch) || ch == '_')) {s += ch;}
             std::cin.putback(ch);
-            if(table.count(s)) return token('8', table[s]);
-            return token('a', s);
+             if (s == "q") {
+                return token('q'); // Treat 'q' as quit if standalone
+            }
+            return token('a', s);  // 'a' for identifiers
         }
         throw std::runtime_error("Bad token");
     }
 }
 
+
 // declaration so that primary() can call expression()
 double expression();
 
-double primary()    // Number or ‘(‘ Expression ‘)’
-{
+double primary() {
     token t = ts.get();
-    switch (t.kind)
-    {
-    case '(':    // handle ‘(’expression ‘)’
-    {
-        double d = expression();
-        t = ts.get();
-        if (t.kind != ')')
-            throw std::runtime_error("')' expected");
-        return d;
-    }
+    switch (t.kind) {
+    case '(':
+        {
+            double d = expression();
+            t = ts.get();
+            if (t.kind != ')') throw std::runtime_error("')' expected");
+            return d;
+        }
     case '-':
         return -primary();
     case '+':
         return primary();
-    case '8':    // we use ‘8’ to represent the “kind” of a number
-        return t.value;    // return the number’s value
-    case 'a': {
-        std::string var_name = t.name;
-        token next_t = ts.get();
-        if (next_t.kind == '='){
-            double value = expression();
-            table[var_name] = value;
-            return value;
-        }else{
-            ts.putback(next_t);
-            if (table.find(var_name) == table.end())
-                throw std::runtime_error(var_name + "not defined");
-            return table[var_name];
+    case '8':
+        return t.value;
+    case 'a':
+        {
+            std::string var_name = t.name;
+            if (var_name == "q") throw std::runtime_error("Unexpected use of quit command 'q'");
+            token next_t = ts.get();
+            if (next_t.kind == '=') {
+                double value = expression();
+                table[var_name] = value;  // Assign value to the variable
+                return value;
+            } else {
+                ts.putback(next_t);
+                if (table.find(var_name) == table.end()) throw std::runtime_error(var_name + " not defined");
+                return table[var_name];  // Retrieve the variable's value
+            }
         }
-    }
     default:
-        throw std::runtime_error("primary expected");
+        throw std::runtime_error("Primary expected");
     }
 }
+
 
 // exactly like expression(), but for * and /
 double term()
@@ -208,23 +205,23 @@ double expression()
 int main() {
     try {
         init_table();  // Initialize constants in the table
-        std::cout << "Enter equations to calculate. for mathematical constants pi, e, phi, tau, isqrd, fibonacci, sqrt2, sqrt3 type as listed here, type 'q' to quit. Each equation must end with ';'.\n";
+        std::cout << "Enter equations to calculate. for mathematical constants pi, e, phi, tau, isqrd, fibonacci, sqrt2, sqrt3 type as listed here, type 'q' to quit. Each equation must end with ';'\n";
 
-        double val = 0;  // This will hold the result of each expression
+        double val = 0;
         while (true) {
-            std::cout << "> ";  // Prompt for input
+            std::cout << "> ";
             token t = ts.get();
-            if (t.kind == 'q') {  // Quit command
+            if (t.kind == 'q') {
                 std::cout << "Quitting program.\n";
                 break;
             }
-            if (t.kind == ';') {  // End of expression; print the result
+            if (t.kind == ';') {
                 std::cout << "= " << val << '\n';
-                val = 0;  // Reset val for next expression
-            } else {
-                ts.putback(t);
-                val = expression();  // Evaluate the expression
+                val = 0;
+                continue;
             }
+            ts.putback(t);
+            val = expression();
         }
     } catch (std::runtime_error& e) {
         std::cerr << "Runtime error: " << e.what() << std::endl;
